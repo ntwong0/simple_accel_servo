@@ -31,6 +31,7 @@ AsyncEventSource events("/events");
 void vAccelXHRTask(void * parameter);
 void vAccelTask(void *pvParameter);
 void vServoTask(void *pvParameter);
+void vServoXHRTask(void *pvParameter);
 
 uint32_t degree_of_rotation;
 char imu_buf[12];
@@ -77,13 +78,13 @@ void setup()
                 1,           /* Priority of the task. */
                 NULL);       /* Task handle. */
 
-    // xTaskCreate(
-    //             vServoTask,     /* Task function. */
-    //             "vServoTask",   /* String with name of task. */
-    //             10000,        /* Stack size in words. */
-    //             NULL,        /* Parameter passed as input of the task */
-    //             1,           /* Priority of the task. */
-    //             NULL);       /* Task handle. */
+    xTaskCreate(
+                vServoXHRTask,     /* Task function. */
+                "vServoXHRTask",   /* String with name of task. */
+                10000,        /* Stack size in words. */
+                NULL,        /* Parameter passed as input of the task */
+                1,           /* Priority of the task. */
+                NULL);       /* Task handle. */
 
 
     events.onConnect([](AsyncEventSourceClient *client)
@@ -239,8 +240,8 @@ void vAccelTask(void* pvParameter)
     //     (int8_t) imu_buf[2]
     // ));
 
-    Serial.printf("%d degrees\n", degree_of_rotation);
-    Serial.printf("=============\n");
+    // Serial.printf("%d degrees\n", degree_of_rotation);
+    // Serial.printf("=============\n");
     //</debugging>
     
     //TODO send via XHR
@@ -252,7 +253,6 @@ void vAccelTask(void* pvParameter)
 // use GPIO15 for servo control
 void vServoTask(void* pvParameter)
 {
-  uint32_t angle, count;
   // gpio init
   mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, 15);
 
@@ -283,6 +283,61 @@ void vServoTask(void* pvParameter)
       MCPWM_OPR_A, 
       servo_per_degree_init(180-degree_of_rotation)
     );
+    vTaskDelay(10);
+  }
+  vTaskDelete(NULL);
+}
+
+// use GPIO15 for servo control
+void vServoXHRTask(void* pvParameter)
+{
+  // gpio init
+  mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, 15);
+
+  // mcpwm config
+  mcpwm_config_t pwm_config;
+                             //frequency = 50Hz, i.e. for every servo motor 
+  pwm_config.frequency = 50; //time period should be 20ms
+  pwm_config.cmpr_a = 0;     //duty cycle of PWMxA = 0
+  pwm_config.cmpr_b = 0;     //duty cycle of PWMxb = 0
+  pwm_config.counter_mode = MCPWM_UP_COUNTER;
+  pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
+
+  //Configure PWM0A & PWM0B with above settings
+  mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);
+
+  server.on("/servo", HTTP_POST, [](AsyncWebServerRequest *request){
+    int args = request->args();
+    if(args != 1) request->send(200, "text/plain", "BAD REQUEST: argument count insufficient");
+    else 
+    {
+      uint32_t temp_val = atoi(request->arg((size_t)0).c_str());
+      if(temp_val < 0 || temp_val > 180) request->send(200, "text/plain", "BAD REQUEST: invalid value received");
+      else
+      {
+        uint32_t deg_val = temp_val;
+        Serial.printf("received %i\n", deg_val);
+        request->send(200, "text/plain", "ACK");
+        mcpwm_set_duty_in_us(
+          MCPWM_UNIT_0, 
+          MCPWM_TIMER_0, 
+          MCPWM_OPR_A, 
+          servo_per_degree_init(180-deg_val)
+        );
+      }
+    }
+    vTaskDelay(10);
+  });
+  for(;;)
+  {
+    // for (count = 0; count < SERVO_MAX_DEGREE; count++) {
+    //     printf("Angle of rotation: %d\n", count);
+    //     angle = servo_per_degree_init(count);
+    //     printf("pulse width: %dus\n", angle);
+    //     mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, angle);
+    //     vTaskDelay(10);     //Add delay, since it takes time for servo to rotate, generally 100ms/60degree rotation at 5V
+    // }
+
     vTaskDelay(10);
   }
   vTaskDelete(NULL);
