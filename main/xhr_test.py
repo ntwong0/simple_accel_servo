@@ -1,5 +1,5 @@
 import requests
-import sleep
+import time
 import numpy as np
 
 # dictToSend = {'question':'what is the answer?'}
@@ -37,14 +37,26 @@ def normalize_degree_for_servo(degree):
     else:
         return degree
 
+def get_accel():
+    res = requests.post('http://192.168.0.192:80/accel')
+    my_list = res.text.split(",")
+    #<debug>
+    print res.text
+    #</debug>
+    return my_list
+
+def set_servo(deg_val):
+    res = requests.post('http://192.168.0.192:80/servo?deg_val=' + str(deg_val))
+    #<debug>
+    print res.text
+    #</debug>
+
 def run_task():
     while True:
-        res = requests.post('http://192.168.0.192:80/accel')
-        my_list = res.text.split(",")
+        my_list = get_accel()
         deg_val = normalize_degree_for_servo(
             accelVal_to_degrees(my_list[0], my_list[1])
         )
         print deg_val
-        res = requests.post('http://192.168.0.192:80/servo?deg_val=' + str(deg_val))
-        print res.text
+        set_servo(deg_val)
         time.sleep(0.1)
